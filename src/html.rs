@@ -36,15 +36,16 @@ use std::path::Path;
 /// }
 /// let output_html = html_generator.finalize();
 /// ```
-pub struct ClassedHTMLGenerator<'a> {
+pub struct ClassedHTMLGenerator<'a, 'b> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
-    html: String
+    html: String,
+    class_style: ClassStyle<'b>,
 }
 
-impl<'a> ClassedHTMLGenerator<'a> {
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
+impl<'a, 'b> ClassedHTMLGenerator<'a, 'b> {
+    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a, 'b> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -52,7 +53,21 @@ impl<'a> ClassedHTMLGenerator<'a> {
             syntax_set,
             open_spans,
             parse_state,
-            html
+            html,
+            class_style: ClassStyle::Spaced,
+        }
+    }
+
+    pub fn with_style(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, class_style: ClassStyle<'b>) -> ClassedHTMLGenerator<'a, 'b> {
+        let parse_state = ParseState::new(syntax_reference);
+        let open_spans = 0;
+        let html = String::new();
+        ClassedHTMLGenerator {
+            syntax_set,
+            open_spans,
+            parse_state,
+            html,
+            class_style,
         }
     }
 
@@ -62,7 +77,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         let (formatted_line, delta) = tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
-            ClassStyle::Spaced);
+            self.class_style);
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
     }
@@ -79,22 +94,25 @@ impl<'a> ClassedHTMLGenerator<'a> {
 /// Only one style for now, I may add more class styles later.
 /// Just here so I don't have to change the API
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ClassStyle {
+pub enum ClassStyle<'a> {
     /// The classes are the atoms of the scope separated by spaces
     /// (e.g `source.php` becomes `source php`).
     /// This isn't that fast since it has to use the scope repository
     /// to look up scope names.
     Spaced,
+    SpacedPrefix(&'a str),
 }
 
 fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
-    assert!(style == ClassStyle::Spaced); // TODO more styles
     let repo = SCOPE_REPO.lock().unwrap();
     for i in 0..(scope.len()) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
         if i != 0 {
             s.push_str(" ")
+        }
+        if let ClassStyle::SpacedPrefix(ref prefix) = style {
+          s.push_str(prefix);
         }
         s.push_str(atom_s);
     }
